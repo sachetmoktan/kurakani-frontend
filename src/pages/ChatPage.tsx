@@ -19,6 +19,8 @@ function ChatPage() {
 
   const [userListForNewConv, setUserListForNewConv] = useState<TUser[]>([]);
 
+  const [reloadData, setReloadData] = useState(false);
+
   const selectRef = useRef<HTMLSelectElement>(null);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -102,7 +104,7 @@ function ChatPage() {
         notify.error(`${err}`);
       }
     })();
-  }, []);
+  }, [reloadData]);
 
   useEffect(() => {
     if (user && user._id) {
@@ -115,7 +117,7 @@ function ChatPage() {
         }
       })();
     }
-  }, [user, user?._id]);
+  }, [user, user?._id, reloadData]);
 
   const startNewPrivateConversation = (otherUserId: string) => {
     socket.emit('conversation:create', {
@@ -241,6 +243,10 @@ function ChatPage() {
     })();
   }, [conversationId, tobeUpdatedConvId]);
 
+  // useEffect(() => {
+
+  // }, [reloadData]);
+
   return (
     <>
       <nav className='bg-pink-100 h-14 flex justify-between items-center px-8 sticky top-0'>
@@ -252,6 +258,9 @@ function ChatPage() {
       <main className='h-[calc(100dvh-56px)] flex justify-between'>
         <section className='flex justify-between gap-2 w-[200px]'>
           <ul className='w-full pl-4  overflow-y-auto'>
+            <button type='button' onClick={() => setReloadData(!reloadData)}>
+              Reload Data
+            </button>
             <select ref={selectRef} defaultValue={''} onChange={handleSelectToStartConversation}>
               <option value='' disabled>
                 Choose a user...
