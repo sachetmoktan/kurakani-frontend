@@ -1,34 +1,37 @@
 import { useRef } from 'react';
-import useAuth from '../auth/useAuth';
+import { useNavigate } from 'react-router-dom';
 import fetchApi from '../lib/api/fetch';
 import notify from '../lib/toast/toast';
 import type { TUser } from '../types/auth.types';
 import type { TApiResponse } from '../types/common.types';
 
 function LoginPage() {
-  const { setUser } = useAuth();
+  const navigate = useNavigate();
+  const nameRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = async (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const name = nameRef.current?.value.trim();
     const email = emailRef.current?.value.trim();
     const password = passwordRef.current?.value;
 
-    if (!email || !password) {
+    if (!name || !email || !password) {
       return;
     }
 
     try {
-      const loginData = await fetchApi<TApiResponse<TUser>>('/login', {
+      const registerData = await fetchApi<TApiResponse<TUser>>('/signup', {
         method: 'POST',
         body: {
+          name,
           email,
           password,
         },
       });
-      setUser(loginData.data);
-      notify.success(loginData.message);
+      notify.success(registerData.message);
+      navigate('/login');
     } catch (err) {
       notify.error(`${err}`);
     }
@@ -39,18 +42,22 @@ function LoginPage() {
       <section className='flex h-dvh items-center justify-center'>
         <form onSubmit={handleSubmit} className='bg-green-100 p-8 rounded-sm'>
           <div className='flex justify-between gap-2 mb-2'>
+            <label htmlFor='name'>Name</label>
+            <input ref={nameRef} type='text' name='name' id='name' />
+          </div>
+          <div className='flex justify-between gap-2 mb-2'>
             <label htmlFor='email'>Email</label>
-            <input ref={emailRef} type='email' name='Email' id='email' autoComplete='email' />
+            <input ref={emailRef} type='email' name='Email' id='email' />
           </div>
           <div className='flex justify-between gap-2 mb-4'>
             <label htmlFor='password'>Password</label>
             <input ref={passwordRef} type='password' name='Password' id='password' />
           </div>
           <button type='submit' className='w-full px-1 py-1 hover:cursor-pointer mb-4'>
-            Login
+            Register
           </button>
           <div className='flex justify-end items-center'>
-            <a href='/register'>Proceed to Register</a>
+            <a href='/login'>Proceed to Login</a>
           </div>
         </form>
       </section>

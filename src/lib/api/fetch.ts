@@ -33,10 +33,17 @@ async function fetchApi<T>(endpoint: string, options: TFetchApiOptions = {}): Pr
   }
 
   if (!response.ok) {
-    const errMsg =
-      typeof data === 'object' && data !== null && 'message' in data
-        ? String(data.message)
-        : `Request failed with status ${response.status}`;
+    let errMsg;
+    if (typeof data === 'object' && data !== null) {
+      if ('errors' in data && Array.isArray(data.errors)) {
+        errMsg = `${data.errors[0].message}`;
+      } else {
+        errMsg =
+          typeof data === 'object' && data !== null && 'message' in data
+            ? String(data.message)
+            : `Request failed with status ${response.status}`;
+      }
+    }
 
     throw new Error(errMsg);
   }
