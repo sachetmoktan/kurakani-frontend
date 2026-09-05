@@ -1,12 +1,12 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import './App.css';
-import LoginPage from './pages/LoginPage';
 import PrivateRoute from './auth/PrivateRoute';
-import ChatPage from './pages/ChatPage';
 import PublicRoute from './auth/PublicRoute';
-import useAuth from './auth/useAuth';
-import { useSocket } from './socket/useSocket';
+import useAuth from './context/auth/useAuth';
+import ChatPage from './pages/ChatPage';
+import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import { useSocket } from './socket/useSocket';
 
 function App() {
   const { isAuthenticated } = useAuth();

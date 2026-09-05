@@ -1,27 +1,25 @@
 import { API_BASE_URL } from '../../constants';
-
-type TFetchApiOptions = {
-  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-  body?: unknown;
-  headers?: HeadersInit;
-  credentials?: RequestCredentials;
-};
+import type { TFetchApiOptions } from '../../types/auth.types';
 
 async function fetchApi<T>(endpoint: string, options: TFetchApiOptions = {}): Promise<T> {
-  const { method, headers, body, ...rest } = options;
+  const { auth = true, method, headers, body, ...rest } = options;
+  const token = localStorage.getItem('token');
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...rest,
     method: method ? method : 'GET',
     headers: {
       'Content-Type': 'application/json',
+      ...(auth && token
+        ? {
+            Authorization: `Bearer ${token}`,
+          }
+        : {}),
       ...headers,
     },
     ...(!!body && {
       body: JSON.stringify(body),
     }),
-    // for session-based authentication
-    credentials: 'include',
   });
 
   let data: unknown;

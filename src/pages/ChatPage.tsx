@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import useAuth from '../auth/useAuth';
+import { useNavigate } from 'react-router-dom';
+import useAuth from '../context/auth/useAuth';
 import fetchApi from '../lib/api/fetch';
 import notify from '../lib/toast/toast';
 import { socket } from '../socket/socket';
@@ -7,7 +8,8 @@ import type { TConversation, TUser } from '../types/auth.types';
 import type { TApiResponse, TConversationUpdate, TMessage } from '../types/common.types';
 
 function ChatPage() {
-  const { user, setUser } = useAuth();
+  const navigate = useNavigate();
+  const { payload, removeToken } = useAuth();
 
   const [text, setText] = useState('');
   const [myConversations, setMyConversations] = useState<TConversation[]>([]);
@@ -16,10 +18,6 @@ function ChatPage() {
   const [allUsers, setAllUsers] = useState<TUser[]>([]);
 
   const [tobeUpdatedConvId, setToBeUpdatedConvId] = useState<string | null>(null);
-
-  const [userListForNewConv, setUserListForNewConv] = useState<TUser[]>([]);
-
-  const [reloadData, setReloadData] = useState(false);
 
   const selectRef = useRef<HTMLSelectElement>(null);
 
@@ -104,20 +102,20 @@ function ChatPage() {
         notify.error(`${err}`);
       }
     })();
-  }, [reloadData]);
+  }, []);
 
   useEffect(() => {
-    if (user && user._id) {
+    if (payload && payload.userId) {
       (async () => {
         try {
-          const conversations = await fetchApi<TApiResponse<TConversation[]>>(`/conversations/user/${user._id}`);
+          const conversations = await fetchApi<TApiResponse<TConversation[]>>(`/conversations/user/${payload.userId}`);
           setMyConversations(conversations.data);
         } catch (err) {
           notify.error(`${err}`);
         }
       })();
     }
-  }, [user, user?._id, reloadData]);
+  }, [payload, payload?.userId]);
 
   const startNewPrivateConversation = (otherUserId: string) => {
     socket.emit('conversation:create', {
@@ -202,28 +200,17 @@ function ChatPage() {
 
   const handleLogout = async () => {
     try {
-      const logoutData = await fetchApi<TApiResponse<TUser>>('/logout', {
-        method: 'POST',
-      });
-      setUser(null);
-      notify.success(logoutData.message);
+      // const logoutData = await fetchApi<TApiResponse<TUser>>('/logout', {
+      //   method: 'POST',
+      // });
+      // notify.success(logoutData.message);
+      removeToken();
+      notify.success('Logout Successfully');
+      navigate('/login');
     } catch (err) {
       notify.error(`${err}`);
     }
   };
-
-  useEffect(() => {
-    if (user && allUsers && myConversations) {
-      (() => {
-        const participantIds = new Set(
-          myConversations.flatMap(conversation => conversation.participants.map(participant => participant._id)),
-        );
-
-        const usersNotInConversations = allUsers.filter(usr => usr._id !== user._id && !participantIds.has(user._id));
-        setUserListForNewConv(() => usersNotInConversations);
-      })();
-    }
-  }, [user, allUsers, myConversations]);
 
   const handleSelectToStartConversation = async () => {
     if (selectRef.current && selectRef.current.value) {
@@ -243,39 +230,44 @@ function ChatPage() {
     })();
   }, [conversationId, tobeUpdatedConvId]);
 
-  // useEffect(() => {
-
-  // }, [reloadData]);
+  const usersNotInConversation = () => {
+    if (payload && allUsers && myConversations) {
+      const usersInConversations = new Set(
+        myConversations.flatMap(conversation => conversation.participants.map(participant => participant._id)),
+      );
+      usersInConversations.add(payload.userId);
+      const usersNotInConversations = allUsers.filter(usr => !usersInConversations.has(usr._id));
+      return usersNotInConversations;
+    }
+    return [];
+  };
 
   return (
     <>
       <nav className='bg-pink-100 h-14 flex justify-between items-center px-8 sticky top-0'>
-        <h2>{user && user.name ? `Hi, ${user?.name}` : ''}</h2>
+        <h2>{payload && payload.name ? `Hi, ${payload?.name}` : ''}</h2>
         <button type='button' onClick={handleLogout} className='px-4 py-2 h-8 hover:cursor-pointer'>
           Logout
         </button>
       </nav>
       <main className='h-[calc(100dvh-56px)] flex justify-between'>
-        <section className='flex justify-between gap-2 w-[200px]'>
+        <section className='flex justify-between gap-2 w-50'>
           <ul className='w-full pl-4  overflow-y-auto'>
-            <button type='button' onClick={() => setReloadData(!reloadData)}>
-              Reload Data
-            </button>
-            <select ref={selectRef} defaultValue={''} onChange={handleSelectToStartConversation}>
+            <select ref={selectRef} defaultValue={''} onChange={() => handleSelectToStartConversation()}>
               <option value='' disabled>
                 Choose a user...
               </option>
-              {userListForNewConv.map(item => (
+              {usersNotInConversation().map(item => (
                 <option value={item._id}>{item.name}</option>
               ))}
             </select>
-            {user &&
-              user?._id &&
+            {payload &&
+              payload?.userId &&
               myConversations &&
               myConversations.map((conversation, index) => {
-                const conversationWith = conversation.participants.filter(participant => participant._id !== user?._id);
+                const conversationWith = conversation.participants.filter(participant => participant._id !== payload?.userId);
                 const usrName = conversationWith[0]?.name;
-                const unreadCount = conversation?.unreadCount?.[`${user?._id}`];
+                const unreadCount = conversation?.unreadCount?.[`${payload?.userId}`];
                 return (
                   <li
                     key={`${conversationWith[0]}-${index}`}
@@ -296,7 +288,7 @@ function ChatPage() {
           {/* <h1>Messages</h1> */}
           <ul className='p-0 pr-8 pb-[10dvh] flex flex-col gap-2'>
             {privateMsgs.map((message, index) => {
-              const alignment = message.senderId === user?._id ? 'self-end' : 'self-start';
+              const alignment = message.senderId === payload?.userId ? 'self-end' : 'self-start';
               return (
                 <li key={`${message._id}-${index}`} className={`list-none ${alignment} border rounded-sm p-2`}>
                   {message.content}

@@ -1,12 +1,15 @@
 import { useRef } from 'react';
-import useAuth from '../auth/useAuth';
+import { useNavigate } from 'react-router-dom';
+import useAuth from '../context/auth/useAuth';
 import fetchApi from '../lib/api/fetch';
 import notify from '../lib/toast/toast';
-import type { TUser } from '../types/auth.types';
+import type { TLogin } from '../types/auth.types';
 import type { TApiResponse } from '../types/common.types';
 
 function LoginPage() {
-  const { setUser } = useAuth();
+  const navigate = useNavigate();
+  const { setToken } = useAuth();
+
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
@@ -20,14 +23,15 @@ function LoginPage() {
     }
 
     try {
-      const loginData = await fetchApi<TApiResponse<TUser>>('/login', {
+      const loginData = await fetchApi<TApiResponse<TLogin>>('/login', {
         method: 'POST',
         body: {
           email,
           password,
         },
       });
-      setUser(loginData.data);
+      setToken(loginData.data.access_token);
+      navigate('/chat');
       notify.success(loginData.message);
     } catch (err) {
       notify.error(`${err}`);
