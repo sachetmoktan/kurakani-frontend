@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { UserSearchInput } from '../components/UserSearchInput';
 import useAuth from '../context/auth/useAuth';
 import fetchApi from '../lib/api/fetch';
 import notify from '../lib/toast/toast';
@@ -16,15 +17,12 @@ function ChatPage() {
   const [myConversations, setMyConversations] = useState<TConversation[]>([]);
   const [privateMsgs, setPrivateMsgs] = useState<TMessage[]>([]);
   const [conversationId, setActiveConversationId] = useState<string>('');
-  const [allUsers, setAllUsers] = useState<TUser[]>([]);
 
   const [tobeUpdatedConvId, setToBeUpdatedConvId] = useState<string | null>(null);
 
   const [seenStatus, setSeenStatus] = useState(false);
 
   const [selectedMsgId, setSelectedMsgId] = useState<string | null>(null);
-
-  const selectRef = useRef<HTMLSelectElement>(null);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -33,11 +31,17 @@ function ChatPage() {
     });
   }, [myConversations]);
 
+  useEffect(() => {
+    (function () {
+      setSeenStatus(() => false);
+    })();
+  }, [conversationId]);
+
   const handleConversationUpdate = (data: TConversationUpdate) => {
     // console.log('AlertConversationUpdate', data);
 
     if ('conversation' in data) {
-      // console.log('New Conversation added in array: ', data.conversation);
+      console.log('New Conversation added in array: ', data.conversation);
       setMyConversations(prevConversations => [data.conversation, ...prevConversations]);
     } else {
       setToBeUpdatedConvId(() => data.conversationId); // for updating unread count if the current conversation is open
@@ -97,16 +101,16 @@ function ChatPage() {
     };
   }, []);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const users = await fetchApi<TApiResponse<TUser[]>>('/users');
-        setAllUsers(users.data);
-      } catch (err) {
-        notify.error(`${err}`);
-      }
-    })();
-  }, []);
+  // useEffect(() => {
+  //   (async () => {
+  //     try {
+  //       const users = await fetchApi<TApiResponse<TUser[]>>('/users');
+  //       console.log('AllUsers', users.data);
+  //     } catch (err) {
+  //       notify.error(`${err}`);
+  //     }
+  //   })();
+  // }, []);
 
   useEffect(() => {
     if (payload && payload.userId) {
@@ -229,13 +233,6 @@ function ChatPage() {
     }
   };
 
-  const handleSelectToStartConversation = async () => {
-    if (selectRef.current && selectRef.current.value) {
-      startNewPrivateConversation(selectRef.current.value);
-      selectRef.current.value = '';
-    }
-  };
-
   useEffect(() => {
     (function () {
       if (conversationId && tobeUpdatedConvId && conversationId.toString() === tobeUpdatedConvId.toString()) {
@@ -247,21 +244,10 @@ function ChatPage() {
     })();
   }, [conversationId, tobeUpdatedConvId]);
 
-  const usersNotInConversation = () => {
-    if (payload && allUsers && myConversations) {
-      const usersInConversations = new Set(
-        myConversations.flatMap(conversation => conversation.participants.map(participant => participant._id)),
-      );
-      usersInConversations.add(payload.userId);
-      const usersNotInConversations = allUsers.filter(usr => !usersInConversations.has(usr._id));
-      return usersNotInConversations;
-    }
-    return [];
-  };
-
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
+  const [typingUserName, setTypingUserName] = useState<string | null>(null);
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
 
@@ -314,12 +300,12 @@ function ChatPage() {
     }, 1000);
   };
   useEffect(() => {
-    const handleTyping = (data: { conversationId: string; userId: string; isTyping: boolean }) => {
+    const handleTyping = (data: { conversationId: string; userId: string; isTyping: boolean; typingUserName: string }) => {
       if (data.conversationId !== conversationId) {
         return;
       }
-
       setIsOtherUserTyping(data.isTyping);
+      setTypingUserName(data.typingUserName);
     };
 
     socket.on('conversation:typing', handleTyping);
@@ -352,6 +338,11 @@ function ChatPage() {
     setSelectedMsgId(prev => (prev === id ? null : id));
   };
 
+  const handleSelectUserForConversation = (usr: TUser) => {
+    console.log({ usr });
+    startNewPrivateConversation(usr._id);
+  };
+
   return (
     <>
       <nav className='bg-pink-100 h-14 flex justify-between items-center px-8 sticky top-0 max-w-[1200px] mx-auto'>
@@ -360,19 +351,14 @@ function ChatPage() {
           Logout
         </button>
       </nav>
-      <main className='h-[calc(100dvh-56px)] flex justify-between w-full max-w-[1200px] mx-auto'>
+
+      <section className='sticky top-14 max-w-[1200px] mx-auto flex justify-center items-center gap-2 bg-pink-100 z-2'>
+        <UserSearchInput onSelect={handleSelectUserForConversation} />
+      </section>
+
+      <main className='h-[calc(100dvh-56px-34px)] flex justify-between w-full max-w-[1200px] mx-auto'>
         <section className='flex shrink-0 justify-between gap-2 w-[35%] min-w-[35%] max-w-5'>
           <ul className='w-full pl-4  overflow-y-auto overflow-x-hidden'>
-            <select ref={selectRef} defaultValue={''} onChange={() => handleSelectToStartConversation()} className='mb-4 w-full'>
-              <option value='' disabled>
-                Choose...
-              </option>
-              {usersNotInConversation().map(item => (
-                <option key={item._id} value={item._id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
             {payload &&
               payload?.userId &&
               myConversations &&
@@ -416,14 +402,17 @@ function ChatPage() {
                 </li>
               );
             })}
-            {seenStatus && <span className='text-xs text-end text-gray-500'>Seen</span>}
+            {privateMsgs.length < 1 && seenStatus && <span className='text-xs text-end text-gray-500'>No messages yet</span>}
+            {privateMsgs.length > 0 && seenStatus && <span className='text-xs text-end text-gray-500'>Seen</span>}
             <div ref={messagesEndRef} />
           </ul>
           {conversationId && (
             <>
-              <div className='fixed bottom-[25px] left-0 right-0 mx-auto flex w-[60%] max-w-[500px] items-end gap-2'>
+              <div className='fixed bottom-[25px] left-0 right-0 mx-auto flex w-[60%] max-w-[500px] items-end gap-2 rounded-xl border border-white/20 bg-white/30 p-2 shadow-[0_8px_32px_rgba(0,0,0,0.15)] backdrop-blur-xl'>
                 <div className='flex min-w-0 flex-1 flex-col'>
-                  <div className='h-5 text-sm text-gray-500'>{isOtherUserTyping && 'Typing...'}</div>
+                  <div className='h-5 text-sm text-gray-500'>
+                    {isOtherUserTyping && `${typingUserName && typingUserName + ' is '}Typing...`}
+                  </div>
 
                   <input
                     value={text}
@@ -433,7 +422,7 @@ function ChatPage() {
                         sendMessage();
                       }
                     }}
-                    className='h-8 w-full'
+                    className='h-8 w-full bg-transparent px-2 outline-none placeholder:text-gray-500'
                   />
                 </div>
 
@@ -441,7 +430,7 @@ function ChatPage() {
                   type='button'
                   onClick={sendMessage}
                   disabled={!text}
-                  className='h-8 shrink-0 rounded-sm text-white bg-blue-500 border-0 px-3 hover:cursor-pointer hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-blue-400'
+                  className='h-8 shrink-0 rounded-sm border-0 bg-blue-500 px-3 text-white hover:cursor-pointer hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-blue-400'
                 >
                   Send
                 </button>
