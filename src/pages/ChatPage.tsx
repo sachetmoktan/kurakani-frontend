@@ -127,7 +127,7 @@ function ChatPage() {
     socket.emit('conversation:join', {
       conversationId: convoId,
     });
-    setConversationId(convoId);
+    setConversationId(() => convoId);
   };
 
   useEffect(() => {
@@ -140,7 +140,7 @@ function ChatPage() {
       });
 
       // console.log('ConversationId set success', conversationId);
-      setConversationId(conversationId);
+      setConversationId(() => conversationId);
     };
 
     socket.on('conversation:created', handleConversationCreated);
@@ -173,6 +173,21 @@ function ChatPage() {
     if (!text.trim()) {
       return;
     }
+    // Set isTyping flag to false
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    if (isTypingRef.current) {
+      isTypingRef.current = false;
+
+      socket.emit('message:typing', {
+        conversationId,
+        typingUserId: payload?.userId,
+        isTyping: false,
+      });
+    }
+    //--
     console.log('Sending Message', conversationId, text);
     socket.emit('message:send', {
       conversationId,
@@ -242,6 +257,76 @@ function ChatPage() {
     return [];
   };
 
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isTypingRef = useRef(false);
+  const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+
+    setText(value);
+
+    if (!conversationId) {
+      return;
+    }
+
+    if (value.length === 0) {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+
+      if (isTypingRef.current) {
+        isTypingRef.current = false;
+
+        socket.emit('message:typing', {
+          conversationId,
+          typingUserId: payload?.userId,
+          isTyping: false,
+        });
+      }
+
+      return;
+    }
+
+    if (!isTypingRef.current) {
+      isTypingRef.current = true;
+
+      socket.emit('message:typing', {
+        conversationId,
+        typingUserId: payload?.userId,
+        isTyping: true,
+      });
+    }
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    typingTimeoutRef.current = setTimeout(() => {
+      isTypingRef.current = false;
+
+      socket.emit('message:typing', {
+        conversationId,
+        typingUserId: payload?.userId,
+        isTyping: false,
+      });
+    }, 1000);
+  };
+  useEffect(() => {
+    const handleTyping = (data: { conversationId: string; userId: string; isTyping: boolean }) => {
+      if (data.conversationId !== conversationId) {
+        return;
+      }
+
+      setIsOtherUserTyping(data.isTyping);
+    };
+
+    socket.on('conversation:typing', handleTyping);
+
+    return () => {
+      socket.off('conversation:typing', handleTyping);
+    };
+  }, [conversationId]);
+
   return (
     <>
       <nav className='bg-pink-100 h-14 flex justify-between items-center px-8 sticky top-0'>
@@ -258,7 +343,9 @@ function ChatPage() {
                 Choose a user...
               </option>
               {usersNotInConversation().map(item => (
-                <option value={item._id}>{item.name}</option>
+                <option key={item._id} value={item._id}>
+                  {item.name}
+                </option>
               ))}
             </select>
             {payload &&
@@ -295,13 +382,14 @@ function ChatPage() {
                 </li>
               );
             })}
+            {isOtherUserTyping && <div>Typing...</div>}
             <div ref={messagesEndRef} />
           </ul>
           {conversationId && (
             <div className='fixed flex justify-center items-center bottom-0 left-0 right-16 pb-4 w-full'>
               <input
                 value={text}
-                onChange={event => setText(event.target.value)}
+                onChange={event => handleInputChange(event)}
                 onKeyDown={event => {
                   if (event.key === 'Enter') {
                     sendMessage();
