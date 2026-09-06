@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => {
     server: {
       host: '0.0.0.0',
       port: Number(env.VITE_PORT) || 5173,
-      allowedHosts: ['https://kurakani-4a4p.onrender.com'],
+      allowedHosts: ['kurakani-4a4p.onrender.com'],
     },
   };
 });
