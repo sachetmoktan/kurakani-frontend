@@ -19,6 +19,8 @@ function ChatPage() {
 
   const [tobeUpdatedConvId, setToBeUpdatedConvId] = useState<string | null>(null);
 
+  const [seenStatus, setSeenStatus] = useState(false);
+
   const selectRef = useRef<HTMLSelectElement>(null);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -29,10 +31,10 @@ function ChatPage() {
   }, [myConversations]);
 
   const handleConversationUpdate = (data: TConversationUpdate) => {
-    console.log('AlertConversationUpdate', data);
+    // console.log('AlertConversationUpdate', data);
 
     if ('conversation' in data) {
-      console.log('New Conversation added in array: ', data.conversation);
+      // console.log('New Conversation added in array: ', data.conversation);
       setMyConversations(prevConversations => [data.conversation, ...prevConversations]);
     } else {
       setToBeUpdatedConvId(() => data.conversationId); // for updating unread count if the current conversation is open
@@ -80,7 +82,6 @@ function ChatPage() {
           },
         };
       });
-      console.log('AlertConversationUpdate123456:->', { data, conversationId, updatedConversations });
 
       return updatedConversations;
     });
@@ -109,7 +110,7 @@ function ChatPage() {
       (async () => {
         try {
           const conversations = await fetchApi<TApiResponse<TConversation[]>>(`/conversations/user/${payload.userId}`);
-          setMyConversations(conversations.data);
+          setMyConversations(() => conversations.data);
         } catch (err) {
           notify.error(`${err}`);
         }
@@ -132,14 +133,13 @@ function ChatPage() {
 
   useEffect(() => {
     const handleConversationCreated = ({ conversationId }: { conversationId: string }) => {
-      console.log('Conversation created:', conversationId);
+      // console.log('Conversation created:', conversationId);
 
       // Now join the conversation
       socket.emit('conversation:join', {
         conversationId,
       });
 
-      // console.log('ConversationId set success', conversationId);
       setConversationId(() => conversationId);
     };
 
@@ -188,7 +188,9 @@ function ChatPage() {
       });
     }
     //--
-    console.log('Sending Message', conversationId, text);
+    setSeenStatus(() => false); // set it false to remove seen status when a new message is sent
+
+    // console.log('Sending Message', conversationId, text);
     socket.emit('message:send', {
       conversationId,
       content: text,
@@ -200,10 +202,7 @@ function ChatPage() {
   useEffect(() => {
     const handleNewMessages = (messageObj: TMessage) => {
       setPrivateMsgs(prev => [...prev, messageObj]);
-
-      // Yesterday added this line, test it well
-      socket.emit('message:seen', { conversationId: messageObj.conversationId });
-      //-
+      setSeenStatus(() => false); // set it false to remove seen status when a new message is sent
     };
 
     socket.on('message:new', handleNewMessages);
@@ -327,6 +326,23 @@ function ChatPage() {
     };
   }, [conversationId]);
 
+  // logic to show seen status
+  useEffect(() => {
+    const handleConvSeen = (data: { conversationId: string; lastSenderId: string; isReadByAll: boolean }) => {
+      if (data.conversationId !== conversationId && payload?.userId.toString() !== data.lastSenderId.toString()) {
+        return;
+      }
+      // console.log('Read by all status:', data);
+      setSeenStatus(() => data.isReadByAll);
+    };
+
+    socket.on('conversation:seen', handleConvSeen);
+
+    return () => {
+      socket.off('conversation:seen', handleConvSeen);
+    };
+  }, [payload?.userId, conversationId]);
+
   return (
     <>
       <nav className='bg-pink-100 h-14 flex justify-between items-center px-8 sticky top-0'>
@@ -382,22 +398,29 @@ function ChatPage() {
                 </li>
               );
             })}
-            {isOtherUserTyping && <div>Typing...</div>}
+            {seenStatus && (
+              // <span className='text-xs text-gray-500'>{conversation?.unreadCount?.[otherUserId] === 0 ? 'Seen' : 'Sent'}</span>
+              <span className='text-xs text-end text-gray-500'>Seen</span>
+            )}
             <div ref={messagesEndRef} />
           </ul>
           {conversationId && (
-            <div className='fixed flex justify-center items-center bottom-0 left-0 right-16 pb-4 w-full'>
-              <input
-                value={text}
-                onChange={event => handleInputChange(event)}
-                onKeyDown={event => {
-                  if (event.key === 'Enter') {
-                    sendMessage();
-                  }
-                }}
-                className='h-8 w-1/2'
-              />
-            </div>
+            <>
+              <div className='fixed flex flex-col justify-center items-center bottom-0 left-0 right-16 pb-4 w-full'>
+                <div className='h-5 text-sm text-gray-500'>{isOtherUserTyping && 'Typing...'}</div>
+
+                <input
+                  value={text}
+                  onChange={handleInputChange}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter') {
+                      sendMessage();
+                    }
+                  }}
+                  className='h-8 w-1/2'
+                />
+              </div>
+            </>
           )}
         </section>
       </main>

@@ -44,5 +44,5 @@ export type TConversation = {
   _id: string;
   participants: { _id: string; name: string }[];
   unreadCount: Record<string, number>;
-  lastMessageDetails: TLastMessageDetail;
+  lastMessageDetail: TLastMessageDetail;
 };
