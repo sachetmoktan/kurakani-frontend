@@ -6,6 +6,7 @@ import notify from '../lib/toast/toast';
 import { socket } from '../socket/socket';
 import type { TConversation, TUser } from '../types/auth.types';
 import type { TApiResponse, TConversationUpdate, TMessage } from '../types/common.types';
+import { dateTimeFormatter } from '../utils/common-function';
 
 function ChatPage() {
   const navigate = useNavigate();
@@ -14,12 +15,14 @@ function ChatPage() {
   const [text, setText] = useState('');
   const [myConversations, setMyConversations] = useState<TConversation[]>([]);
   const [privateMsgs, setPrivateMsgs] = useState<TMessage[]>([]);
-  const [conversationId, setConversationId] = useState<string>('');
+  const [conversationId, setActiveConversationId] = useState<string>('');
   const [allUsers, setAllUsers] = useState<TUser[]>([]);
 
   const [tobeUpdatedConvId, setToBeUpdatedConvId] = useState<string | null>(null);
 
   const [seenStatus, setSeenStatus] = useState(false);
+
+  const [selectedMsgId, setSelectedMsgId] = useState<string | null>(null);
 
   const selectRef = useRef<HTMLSelectElement>(null);
 
@@ -128,7 +131,7 @@ function ChatPage() {
     socket.emit('conversation:join', {
       conversationId: convoId,
     });
-    setConversationId(() => convoId);
+    setActiveConversationId(() => convoId);
   };
 
   useEffect(() => {
@@ -140,7 +143,7 @@ function ChatPage() {
         conversationId,
       });
 
-      setConversationId(() => conversationId);
+      setActiveConversationId(() => conversationId);
     };
 
     socket.on('conversation:created', handleConversationCreated);
@@ -343,20 +346,26 @@ function ChatPage() {
     };
   }, [payload?.userId, conversationId]);
 
+  const handleMessageClick = (event: React.MouseEvent<HTMLLIElement>) => {
+    const id = event.currentTarget.dataset.id;
+    if (!id) return;
+    setSelectedMsgId(prev => (prev === id ? null : id));
+  };
+
   return (
     <>
-      <nav className='bg-pink-100 h-14 flex justify-between items-center px-8 sticky top-0'>
-        <h2>{payload && payload.name ? `Hi, ${payload?.name}` : ''}</h2>
+      <nav className='bg-pink-100 h-14 flex justify-between items-center px-8 sticky top-0 max-w-[1200px] mx-auto'>
+        <h2 className='text-[clamp(1rem,4vw,1.5rem)] capitalize'>{payload && payload.name ? `Hi, ${payload?.name}` : ''}</h2>
         <button type='button' onClick={handleLogout} className='px-4 py-2 h-8 hover:cursor-pointer'>
           Logout
         </button>
       </nav>
-      <main className='h-[calc(100dvh-56px)] flex justify-between'>
-        <section className='flex justify-between gap-2 w-50'>
-          <ul className='w-full pl-4  overflow-y-auto'>
-            <select ref={selectRef} defaultValue={''} onChange={() => handleSelectToStartConversation()}>
+      <main className='h-[calc(100dvh-56px)] flex justify-between w-full max-w-[1200px] mx-auto'>
+        <section className='flex shrink-0 justify-between gap-2 w-[35%] min-w-[35%] max-w-5'>
+          <ul className='w-full pl-4  overflow-y-auto overflow-x-hidden'>
+            <select ref={selectRef} defaultValue={''} onChange={() => handleSelectToStartConversation()} className='mb-4 w-full'>
               <option value='' disabled>
-                Choose a user...
+                Choose...
               </option>
               {usersNotInConversation().map(item => (
                 <option key={item._id} value={item._id}>
@@ -371,54 +380,71 @@ function ChatPage() {
                 const conversationWith = conversation.participants.filter(participant => participant._id !== payload?.userId);
                 const usrName = conversationWith[0]?.name;
                 const unreadCount = conversation?.unreadCount?.[`${payload?.userId}`];
+                const activeConversation = conversationId === conversation._id;
                 return (
                   <li
                     key={`${conversationWith[0]}-${index}`}
                     onClick={() => {
                       continueExitingPrivateConversation(conversation._id);
                     }}
-                    className='list-none border-b border-b-black flex items-center justify-center hover:cursor-pointer hover:bg-pink-100'
+                    className={`list-none border-b border-b-black flex flex-col items-center justify-center hover:cursor-pointer ${activeConversation ? 'bg-pink-200' : 'hover:bg-pink-50'}`}
                   >
-                    <p>{usrName}</p>
-                    <p>({unreadCount}) Unread Messages</p>
+                    <p className='text-[clamp(0.6rem,4vw,1rem)] m-0 py-2 truncate capitalize'>{usrName}</p>
+                    {!!unreadCount && <p className='text-[clamp(0.4rem,4vw,0.7rem)] m-0 text-red-700 pb-2'>({unreadCount}) Unread</p>}
                   </li>
                 );
               })}
           </ul>
           <div className='border-l-2 border-l-black'></div>
         </section>
-        <section className='grow pl-8 overflow-y-auto relative'>
-          {/* <h1>Messages</h1> */}
-          <ul className='p-0 pr-8 pb-[10dvh] flex flex-col gap-2'>
+        <section className='grow overflow-y-auto relative'>
+          <div className='fixed top-14 w-full bg-red-100'></div>
+          <ul className='p-0 px-2 pb-[10dvh] flex flex-col gap-2 sm:gap-3 md:gap-4 lg:gap-6"'>
             {privateMsgs.map((message, index) => {
               const alignment = message.senderId === payload?.userId ? 'self-end' : 'self-start';
               return (
-                <li key={`${message._id}-${index}`} className={`list-none ${alignment} border rounded-sm p-2`}>
-                  {message.content}
+                <li
+                  key={`${message._id}-${index}`}
+                  data-id={message._id}
+                  className={`list-none ${alignment} border rounded-sm p-2 hover:cursor-pointer hover:outline outline-blue-300 flex flex-col gap-1`}
+                  onClick={handleMessageClick}
+                >
+                  <span className='text-[clamp(0.6rem,4vw,1rem)]'>{message.content}</span>
+                  {selectedMsgId && selectedMsgId === message._id && (
+                    <span className='text-gray-400 text-[clamp(0.4rem,4vw,0.7rem)]'>{dateTimeFormatter(message.createdAt)}</span>
+                  )}
                 </li>
               );
             })}
-            {seenStatus && (
-              // <span className='text-xs text-gray-500'>{conversation?.unreadCount?.[otherUserId] === 0 ? 'Seen' : 'Sent'}</span>
-              <span className='text-xs text-end text-gray-500'>Seen</span>
-            )}
+            {seenStatus && <span className='text-xs text-end text-gray-500'>Seen</span>}
             <div ref={messagesEndRef} />
           </ul>
           {conversationId && (
             <>
-              <div className='fixed flex flex-col justify-center items-center bottom-0 left-0 right-16 pb-4 w-full'>
-                <div className='h-5 text-sm text-gray-500'>{isOtherUserTyping && 'Typing...'}</div>
+              <div className='fixed bottom-[25px] left-0 right-0 mx-auto flex w-[60%] max-w-[500px] items-end gap-2'>
+                <div className='flex min-w-0 flex-1 flex-col'>
+                  <div className='h-5 text-sm text-gray-500'>{isOtherUserTyping && 'Typing...'}</div>
 
-                <input
-                  value={text}
-                  onChange={handleInputChange}
-                  onKeyDown={event => {
-                    if (event.key === 'Enter') {
-                      sendMessage();
-                    }
-                  }}
-                  className='h-8 w-1/2'
-                />
+                  <input
+                    value={text}
+                    onChange={handleInputChange}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter') {
+                        sendMessage();
+                      }
+                    }}
+                    className='h-8 w-full'
+                  />
+                </div>
+
+                <button
+                  type='button'
+                  onClick={sendMessage}
+                  disabled={!text}
+                  className='h-8 shrink-0 rounded-sm text-white bg-blue-500 border-0 px-3 hover:cursor-pointer hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-blue-400'
+                >
+                  Send
+                </button>
               </div>
             </>
           )}
