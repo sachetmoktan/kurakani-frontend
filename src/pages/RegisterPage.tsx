@@ -1,15 +1,18 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import fetchApi from '../lib/api/fetch';
 import notify from '../lib/toast/toast';
 import type { TUser } from '../types/auth.types';
 import type { TApiResponse } from '../types/common.types';
+import Button from '../components/common/Button';
 
 function LoginPage() {
   const navigate = useNavigate();
   const nameRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
+
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -22,6 +25,7 @@ function LoginPage() {
     }
 
     try {
+      setLoading(() => true);
       const registerData = await fetchApi<TApiResponse<TUser>>('/signup', {
         method: 'POST',
         body: {
@@ -34,6 +38,8 @@ function LoginPage() {
       navigate('/login');
     } catch (err) {
       notify.error(`${err}`);
+    } finally {
+      setLoading(() => false);
     }
   };
 
@@ -53,9 +59,9 @@ function LoginPage() {
             <label htmlFor='password'>Password</label>
             <input ref={passwordRef} type='password' name='Password' id='password' />
           </div>
-          <button type='submit' className='w-full px-1 py-1 hover:cursor-pointer mb-4'>
+          <Button type='submit' className='w-full mb-4' loading={loading}>
             Register
-          </button>
+          </Button>
           <div className='flex justify-end items-center'>
             <a href='/login'>Proceed to Login</a>
           </div>

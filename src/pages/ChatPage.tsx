@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserSearchInput } from '../components/UserSearchInput';
+import Button from '../components/common/Button';
+import Dropdown from '../components/common/Dropdown';
+import { ChevronLeft, ChevronRight, ThreeDots, TrashIcon } from '../components/common/Icons';
+import { UserSearchInput } from '../components/common/UserSearchInput';
+import Sidebar from '../components/layout/Sidebar';
 import useAuth from '../context/auth/useAuth';
 import fetchApi from '../lib/api/fetch';
 import notify from '../lib/toast/toast';
@@ -8,6 +12,7 @@ import { socket } from '../socket/socket';
 import type { TConversation, TUser } from '../types/auth.types';
 import type { TApiResponse, TConversationUpdate, TMessage } from '../types/common.types';
 import { dateTimeFormatter } from '../utils/common-function';
+import ConfirmDialog from '../components/common/DialogModal';
 
 function ChatPage() {
   const navigate = useNavigate();
@@ -24,16 +29,22 @@ function ChatPage() {
 
   const [selectedMsgId, setSelectedMsgId] = useState<string | null>(null);
 
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
+  function scrolltoLastMessage() {
     messagesEndRef.current?.scrollIntoView({
       behavior: 'smooth',
     });
-  }, [myConversations]);
+  }
+  useEffect(() => {
+    scrolltoLastMessage();
+  }, [myConversations, privateMsgs]);
 
   useEffect(() => {
     (function () {
       setSeenStatus(() => false);
+      resetSelectedMsgForMultiDel();
     })();
   }, [conversationId]);
 
@@ -158,19 +169,22 @@ function ChatPage() {
   }, []);
 
   // Need to make api to load old messages from conversationId
+  async function fetchMessagesByConversationId() {
+    setPrivateMsgs(() => []);
+    try {
+      const oldMessages = await fetchApi<TApiResponse<TMessage[]>>(`/conversations/${conversationId}/messages`);
+      setPrivateMsgs(prev => [...prev, ...oldMessages.data]);
+    } catch (err) {
+      notify.error(`${err}`);
+    }
+  }
   useEffect(() => {
     if (!conversationId) {
       return;
     }
 
     (async () => {
-      setPrivateMsgs(() => []);
-      try {
-        const oldMessages = await fetchApi<TApiResponse<TMessage[]>>(`/conversations/${conversationId}/messages`);
-        setPrivateMsgs(prev => [...prev, ...oldMessages.data]);
-      } catch (err) {
-        notify.error(`${err}`);
-      }
+      fetchMessagesByConversationId();
     })();
   }, [conversationId]);
 
@@ -343,62 +357,181 @@ function ChatPage() {
     startNewPrivateConversation(usr._id);
   };
 
+  // handle for actions
+  const [actionDetail, setActionDetail] = useState<{ label: string; value: string } | null>(null);
+  const handleActionClick = (action: { value: string; label: string }) => {
+    setActionDetail(() => action);
+    if (action.value === 'delete-all-messages') {
+      setShowDeleteDialog(true);
+    }
+  };
+
+  const showCheckboxesForMultiDelete = actionDetail?.value === 'delete-selected-messages';
+  const [selectedMsgForMultiDel, setSelectedMsgForMultiDel] = useState<Array<string>>([]);
+
+  function resetSelectedMsgForMultiDel() {
+    setSelectedMsgForMultiDel(() => []);
+    setActionDetail(null);
+  }
+
+  const deleteSelectedMessagesFromConversation = async () => {
+    if (selectedMsgForMultiDel?.length < 1) return;
+    try {
+      const response = await fetchApi<TApiResponse<{ deletedCount: number }>>(`/messages/${conversationId}`, {
+        method: 'DELETE',
+        body: {
+          messageIds: selectedMsgForMultiDel,
+        },
+      });
+      console.log('AllUsersDeleted', response.data);
+      resetSelectedMsgForMultiDel();
+      fetchMessagesByConversationId();
+    } catch (err) {
+      notify.error(`${err}`);
+    }
+  };
+
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    setDeleteLoading(true);
+    try {
+      const messageIdsByUser = privateMsgs.filter(msg => msg.senderId === payload?.userId).map(msg => msg._id);
+      const response = await fetchApi<TApiResponse<{ deletedCount: number }>>(`/messages/${conversationId}`, {
+        method: 'DELETE',
+        body: {
+          messageIds: messageIdsByUser,
+        },
+      });
+      console.log('AllUsersDeleted', response.data);
+      resetSelectedMsgForMultiDel();
+      fetchMessagesByConversationId();
+      setShowDeleteDialog(false);
+    } catch (err) {
+      notify.error(`${err}`);
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   return (
     <>
+      <ConfirmDialog
+        open={showDeleteDialog}
+        title='Delete Messages?'
+        description='Are you sure you want to delete the messages? This action cannot be undone.'
+        confirmText='Delete'
+        cancelText='Cancel'
+        loading={deleteLoading}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => {
+          setShowDeleteDialog(false);
+          resetSelectedMsgForMultiDel();
+        }}
+      />
       <nav className='bg-pink-100 h-14 flex justify-between items-center px-8 sticky top-0 max-w-[1200px] mx-auto'>
         <h2 className='text-[clamp(1rem,4vw,1.5rem)] capitalize'>{payload && payload.name ? `Hi, ${payload?.name}` : ''}</h2>
-        <button type='button' onClick={handleLogout} className='px-4 py-2 h-8 hover:cursor-pointer'>
+        <Button type='button' onClick={handleLogout}>
           Logout
-        </button>
+        </Button>
       </nav>
 
-      <section className='sticky top-14 max-w-[1200px] mx-auto flex justify-center items-center gap-2 bg-pink-100 z-2'>
+      <section className='sticky top-14 max-w-[1200px] mx-auto flex justify-center items-center gap-2 bg-pink-100 z-2 pb-2'>
         <UserSearchInput onSelect={handleSelectUserForConversation} />
       </section>
 
-      <main className='h-[calc(100dvh-56px-34px)] flex justify-between w-full max-w-[1200px] mx-auto'>
-        <section className='flex shrink-0 justify-between gap-2 w-[35%] min-w-[35%] max-w-5'>
-          <ul className='w-full pl-4  overflow-y-auto overflow-x-hidden'>
-            {payload &&
-              payload?.userId &&
-              myConversations &&
-              myConversations.map((conversation, index) => {
-                const conversationWith = conversation.participants.filter(participant => participant._id !== payload?.userId);
-                const usrName = conversationWith[0]?.name;
-                const unreadCount = conversation?.unreadCount?.[`${payload?.userId}`];
-                const activeConversation = conversationId === conversation._id;
-                return (
-                  <li
-                    key={`${conversationWith[0]}-${index}`}
-                    onClick={() => {
-                      continueExitingPrivateConversation(conversation._id);
-                    }}
-                    className={`list-none border-b border-b-black flex flex-col items-center justify-center hover:cursor-pointer ${activeConversation ? 'bg-pink-200' : 'hover:bg-pink-50'}`}
-                  >
-                    <p className='text-[clamp(0.6rem,4vw,1rem)] m-0 py-2 truncate capitalize'>{usrName}</p>
-                    {!!unreadCount && <p className='text-[clamp(0.4rem,4vw,0.7rem)] m-0 text-red-700 pb-2'>({unreadCount}) Unread</p>}
-                  </li>
-                );
-              })}
-          </ul>
-          <div className='border-l-2 border-l-black'></div>
-        </section>
+      <main className='relative h-[calc(100dvh-98px)] flex justify-between w-full max-w-[1200px] mx-auto overflow-hidden overflow-x-hidden'>
+        {/* <aside className='flex shrink-0 justify-between gap-2 w-[35%] min-w-[35%] sm:min-w-[25%] max-w-4 relative'> */}
+        <aside
+          className={`relative shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out ${sidebarOpen ? 'w-[35%] sm:w-[25%]' : 'w-0'}`}
+        >
+          <Sidebar
+            myConversations={myConversations}
+            conversationId={conversationId}
+            continueExitingPrivateConversation={continueExitingPrivateConversation}
+          />
+          <ChevronLeft onClick={() => setSidebarOpen(() => false)} className='absolute right-0 top-4 z-20 -translate-y-1/2' />
+        </aside>
+        <ChevronRight
+          onClick={() => setSidebarOpen(prev => !prev)}
+          className={`absolute left-0 top-4 z-2 -translate-y-1/2 transition-all duration-300 ease-in-out ${sidebarOpen ? '-translate-x-full opacity-0 pointer-events-none' : 'translate-x-0 opacity-100'}`}
+        />
+
         <section className='grow overflow-y-auto relative'>
-          <div className='fixed top-14 w-full bg-red-100'></div>
-          <ul className='p-0 px-2 pb-[10dvh] flex flex-col gap-2 sm:gap-3 md:gap-4 lg:gap-6"'>
+          {conversationId && (
+            <div className='sticky top-0 w-full bg-white flex justify-between items-center gap-4 p-2 md:px-4'>
+              <span></span>
+              {showCheckboxesForMultiDelete && (
+                <div>
+                  <Button
+                    type='button'
+                    variant='danger'
+                    onClick={deleteSelectedMessagesFromConversation}
+                    disabled={selectedMsgForMultiDel.length < 1}
+                    className='mr-2'
+                  >
+                    Delete Selected
+                  </Button>
+                  <Button type='button' variant='transparent' onClick={resetSelectedMsgForMultiDel}>
+                    Cancel
+                  </Button>
+                </div>
+              )}
+              {!showCheckboxesForMultiDelete && (
+                <Dropdown
+                  icon={<ThreeDots />}
+                  options={[
+                    {
+                      label: 'Multiple Select',
+                      value: 'delete-selected-messages',
+                      icon: <TrashIcon />,
+                    },
+                    {
+                      label: 'Delete All Sent By Me',
+                      value: 'delete-all-messages',
+                      icon: <TrashIcon />,
+                    },
+                  ]}
+                  onChange={handleActionClick}
+                />
+              )}
+            </div>
+          )}
+          <ul className='p-2 md:px-4 pb-[12dvh] flex flex-col gap-2 sm:gap-3 md:gap-4 lg:gap-6"'>
             {privateMsgs.map((message, index) => {
               const alignment = message.senderId === payload?.userId ? 'self-end' : 'self-start';
               return (
                 <li
                   key={`${message._id}-${index}`}
-                  data-id={message._id}
-                  className={`list-none ${alignment} border rounded-sm p-2 hover:cursor-pointer hover:outline outline-blue-300 flex flex-col gap-1`}
-                  onClick={handleMessageClick}
+                  // data-id={message._id}
+                  className={`list-none ${alignment} flex gap-1 ${message.senderId === payload?.userId ? 'flex-row-reverse' : ''}`}
                 >
-                  <span className='text-[clamp(0.6rem,4vw,1rem)]'>{message.content}</span>
-                  {selectedMsgId && selectedMsgId === message._id && (
-                    <span className='text-gray-400 text-[clamp(0.4rem,4vw,0.7rem)]'>{dateTimeFormatter(message.createdAt)}</span>
+                  {showCheckboxesForMultiDelete && message.senderId === payload?.userId && (
+                    <input
+                      type='checkbox'
+                      id={message._id}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        if (!e.target) return;
+                        const checked = e.target?.checked;
+                        if (checked) {
+                          setSelectedMsgForMultiDel(prevData => [...prevData, String(message?._id)]);
+                        } else {
+                          setSelectedMsgForMultiDel(prevData => prevData.filter(item => item !== message?._id));
+                        }
+                      }}
+                    />
                   )}
+                  <span
+                    className='border rounded-sm p-2 hover:cursor-pointer hover:outline outline-blue-300 flex flex-col gap-1'
+                    data-id={message._id}
+                    onClick={handleMessageClick}
+                  >
+                    <span className='text-[clamp(0.6rem,4vw,1rem)]'>{message.content}</span>
+                    {selectedMsgId && selectedMsgId === message._id && (
+                      <span className='text-gray-400 text-[clamp(0.4rem,4vw,0.7rem)]'>{dateTimeFormatter(message.createdAt)}</span>
+                    )}
+                  </span>
                 </li>
               );
             })}
@@ -422,18 +555,18 @@ function ChatPage() {
                         sendMessage();
                       }
                     }}
-                    className='h-8 w-full bg-transparent px-2 outline-none placeholder:text-gray-500'
+                    className='h-8 w-full bg-transparent px-2 outline-none placeholder:text-gray-500 rounded-md'
                   />
                 </div>
 
-                <button
+                <Button
                   type='button'
                   onClick={sendMessage}
                   disabled={!text}
                   className='h-8 shrink-0 rounded-sm border-0 bg-blue-500 px-3 text-white hover:cursor-pointer hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-blue-400'
                 >
                   Send
-                </button>
+                </Button>
               </div>
             </>
           )}
