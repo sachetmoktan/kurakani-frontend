@@ -8,6 +8,7 @@ export type TFetchApiOptions = {
   headers?: HeadersInit;
   credentials?: RequestCredentials;
   auth?: boolean;
+  signal?: AbortSignal;
 };
 
 export type TUser = {
