@@ -21,7 +21,7 @@ function ChatPage() {
   const [text, setText] = useState('');
   const [myConversations, setMyConversations] = useState<TConversation[]>([]);
   const [privateMsgs, setPrivateMsgs] = useState<TMessage[]>([]);
-  const [conversationId, setActiveConversationId] = useState<string>('');
+  const [activeConversationId, setActiveConversationId] = useState<string>('');
 
   const [tobeUpdatedConvId, setToBeUpdatedConvId] = useState<string | null>(null);
 
@@ -46,7 +46,7 @@ function ChatPage() {
       setSeenStatus(() => false);
       resetSelectedMsgForMultiDel();
     })();
-  }, [conversationId]);
+  }, [activeConversationId]);
 
   const handleConversationUpdate = (data: TConversationUpdate) => {
     // console.log('AlertConversationUpdate', data);
@@ -112,17 +112,6 @@ function ChatPage() {
     };
   }, []);
 
-  // useEffect(() => {
-  //   (async () => {
-  //     try {
-  //       const users = await fetchApi<TApiResponse<TUser[]>>('/users');
-  //       console.log('AllUsers', users.data);
-  //     } catch (err) {
-  //       notify.error(`${err}`);
-  //     }
-  //   })();
-  // }, []);
-
   useEffect(() => {
     if (payload && payload.userId) {
       (async () => {
@@ -142,10 +131,11 @@ function ChatPage() {
     });
   };
 
-  const continueExitingPrivateConversation = (convoId: string) => {
+  const continueExistingPrivateConversation = (convoId: string) => {
     socket.emit('conversation:join', {
       conversationId: convoId,
     });
+    // console.log({ activeConversationId: convoId }); //looks fine
     setActiveConversationId(() => convoId);
   };
 
@@ -172,24 +162,24 @@ function ChatPage() {
   async function fetchMessagesByConversationId() {
     setPrivateMsgs(() => []);
     try {
-      const oldMessages = await fetchApi<TApiResponse<TMessage[]>>(`/conversations/${conversationId}/messages`);
+      const oldMessages = await fetchApi<TApiResponse<TMessage[]>>(`/conversations/${activeConversationId}/messages`);
       setPrivateMsgs(prev => [...prev, ...oldMessages.data]);
     } catch (err) {
       notify.error(`${err}`);
     }
   }
   useEffect(() => {
-    if (!conversationId) {
+    if (!activeConversationId) {
       return;
     }
 
     (async () => {
       fetchMessagesByConversationId();
     })();
-  }, [conversationId]);
+  }, [activeConversationId]);
 
   const sendMessage = () => {
-    if (!conversationId) return;
+    if (!activeConversationId) return;
 
     if (!text.trim()) {
       return;
@@ -203,7 +193,7 @@ function ChatPage() {
       isTypingRef.current = false;
 
       socket.emit('message:typing', {
-        conversationId,
+        conversationId: activeConversationId,
         typingUserId: payload?.userId,
         isTyping: false,
       });
@@ -213,7 +203,7 @@ function ChatPage() {
 
     // console.log('Sending Message', conversationId, text);
     socket.emit('message:send', {
-      conversationId,
+      conversationId: activeConversationId,
       content: text,
     });
 
@@ -222,6 +212,8 @@ function ChatPage() {
 
   useEffect(() => {
     const handleNewMessages = (messageObj: TMessage) => {
+      if (messageObj.conversationId !== activeConversationId) return;
+      // console.log({ activeConversationId, messageObj });
       setPrivateMsgs(prev => [...prev, messageObj]);
       setSeenStatus(() => false); // set it false to remove seen status when a new message is sent
     };
@@ -231,7 +223,7 @@ function ChatPage() {
     return () => {
       socket.off('message:new', handleNewMessages);
     };
-  }, []);
+  }, [activeConversationId]);
 
   const handleLogout = async () => {
     try {
@@ -249,14 +241,14 @@ function ChatPage() {
 
   useEffect(() => {
     (function () {
-      if (conversationId && tobeUpdatedConvId && conversationId.toString() === tobeUpdatedConvId.toString()) {
+      if (activeConversationId && tobeUpdatedConvId && activeConversationId.toString() === tobeUpdatedConvId.toString()) {
         socket.emit('private:currentconversation', {
-          conversationId,
+          conversationId: activeConversationId,
         });
         setToBeUpdatedConvId(null);
       }
     })();
-  }, [conversationId, tobeUpdatedConvId]);
+  }, [activeConversationId, tobeUpdatedConvId]);
 
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
@@ -267,7 +259,7 @@ function ChatPage() {
 
     setText(value);
 
-    if (!conversationId) {
+    if (!activeConversationId) {
       return;
     }
 
@@ -280,7 +272,7 @@ function ChatPage() {
         isTypingRef.current = false;
 
         socket.emit('message:typing', {
-          conversationId,
+          conversationId: activeConversationId,
           typingUserId: payload?.userId,
           isTyping: false,
         });
@@ -293,7 +285,7 @@ function ChatPage() {
       isTypingRef.current = true;
 
       socket.emit('message:typing', {
-        conversationId,
+        conversationId: activeConversationId,
         typingUserId: payload?.userId,
         isTyping: true,
       });
@@ -307,7 +299,7 @@ function ChatPage() {
       isTypingRef.current = false;
 
       socket.emit('message:typing', {
-        conversationId,
+        conversationId: activeConversationId,
         typingUserId: payload?.userId,
         isTyping: false,
       });
@@ -315,7 +307,7 @@ function ChatPage() {
   };
   useEffect(() => {
     const handleTyping = (data: { conversationId: string; userId: string; isTyping: boolean; typingUserName: string }) => {
-      if (data.conversationId !== conversationId) {
+      if (data.conversationId !== activeConversationId) {
         return;
       }
       setIsOtherUserTyping(data.isTyping);
@@ -327,12 +319,12 @@ function ChatPage() {
     return () => {
       socket.off('conversation:typing', handleTyping);
     };
-  }, [conversationId]);
+  }, [activeConversationId]);
 
   // logic to show seen status
   useEffect(() => {
     const handleConvSeen = (data: { conversationId: string; lastSenderId: string; isReadByAll: boolean }) => {
-      if (data.conversationId !== conversationId && payload?.userId.toString() !== data.lastSenderId.toString()) {
+      if (data.conversationId !== activeConversationId && payload?.userId.toString() !== data.lastSenderId.toString()) {
         return;
       }
       // console.log('Read by all status:', data);
@@ -344,7 +336,7 @@ function ChatPage() {
     return () => {
       socket.off('conversation:seen', handleConvSeen);
     };
-  }, [payload?.userId, conversationId]);
+  }, [payload?.userId, activeConversationId]);
 
   const handleMessageClick = (event: React.MouseEvent<HTMLLIElement>) => {
     const id = event.currentTarget.dataset.id;
@@ -377,7 +369,7 @@ function ChatPage() {
   const deleteSelectedMessagesFromConversation = async () => {
     if (selectedMsgForMultiDel?.length < 1) return;
     try {
-      const response = await fetchApi<TApiResponse<{ deletedCount: number }>>(`/messages/${conversationId}`, {
+      const response = await fetchApi<TApiResponse<{ deletedCount: number }>>(`/messages/${activeConversationId}`, {
         method: 'DELETE',
         body: {
           messageIds: selectedMsgForMultiDel,
@@ -398,13 +390,12 @@ function ChatPage() {
     setDeleteLoading(true);
     try {
       const messageIdsByUser = privateMsgs.filter(msg => msg.senderId === payload?.userId).map(msg => msg._id);
-      const response = await fetchApi<TApiResponse<{ deletedCount: number }>>(`/messages/${conversationId}`, {
+      await fetchApi<TApiResponse<{ deletedCount: number }>>(`/messages/${activeConversationId}`, {
         method: 'DELETE',
         body: {
           messageIds: messageIdsByUser,
         },
       });
-      console.log('AllUsersDeleted', response.data);
       resetSelectedMsgForMultiDel();
       fetchMessagesByConversationId();
       setShowDeleteDialog(false);
@@ -448,8 +439,8 @@ function ChatPage() {
         >
           <Sidebar
             myConversations={myConversations}
-            conversationId={conversationId}
-            continueExitingPrivateConversation={continueExitingPrivateConversation}
+            conversationId={activeConversationId}
+            continueExistingPrivateConversation={continueExistingPrivateConversation}
           />
           <ChevronLeft onClick={() => setSidebarOpen(() => false)} className='absolute right-0 top-4 z-20 -translate-y-1/2' />
         </aside>
@@ -459,7 +450,7 @@ function ChatPage() {
         />
 
         <section className='grow overflow-y-auto relative'>
-          {conversationId && (
+          {activeConversationId && (
             <div className='sticky top-0 w-full bg-white flex justify-between items-center gap-4 p-2 md:px-4'>
               <span></span>
               {showCheckboxesForMultiDelete && (
@@ -539,7 +530,7 @@ function ChatPage() {
             {privateMsgs.length > 0 && seenStatus && <span className='text-xs text-end text-gray-500'>Seen</span>}
             <div ref={messagesEndRef} />
           </ul>
-          {conversationId && (
+          {activeConversationId && (
             <>
               <div className='fixed bottom-[25px] left-0 right-0 mx-auto flex w-[60%] max-w-[500px] items-end gap-2 rounded-xl border border-white/20 bg-white/30 p-2 shadow-[0_8px_32px_rgba(0,0,0,0.15)] backdrop-blur-xl'>
                 <div className='flex min-w-0 flex-1 flex-col'>

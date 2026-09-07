@@ -4,10 +4,10 @@ import type { TConversation } from '../../types/auth.types';
 interface ISidebar {
   myConversations: TConversation[];
   conversationId: string;
-  continueExitingPrivateConversation: (convoId: string) => void;
+  continueExistingPrivateConversation: (convoId: string) => void;
 }
 
-function Sidebar({ myConversations, conversationId, continueExitingPrivateConversation }: ISidebar) {
+function Sidebar({ myConversations, conversationId, continueExistingPrivateConversation }: ISidebar) {
   const { payload } = useAuth();
 
   return (
@@ -27,7 +27,7 @@ function Sidebar({ myConversations, conversationId, continueExitingPrivateConver
                 <li
                   key={`${conversationWith[0]}-${index}`}
                   onClick={() => {
-                    continueExitingPrivateConversation(conversation._id);
+                    continueExistingPrivateConversation(conversation._id);
                   }}
                   className={`list-none border-b border-b-black flex flex-col items-center justify-center hover:cursor-pointer ${activeConversation ? 'bg-pink-200' : 'hover:bg-pink-50'}`}
                 >
